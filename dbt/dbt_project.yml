@@ -1,0 +1,69 @@
+name: 'ecommerce_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ecommerce'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+require-dbt-version: ">=1.7.0"
+
+vars:
+  # Cutoff date for "active" customer/product calculations.
+  # Override via `dbt run --vars '{"as_of_date": "2025-04-30"}'`
+  as_of_date: '2025-05-01'
+  churn_window_days: 90
+  cohort_grain: 'month'
+
+models:
+  ecommerce_analytics:
+    +materialized: view
+    +persist_docs:
+      relation: true
+      columns: true
+
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags: ["staging"]
+
+    intermediate:
+      +materialized: ephemeral
+      +schema: intermediate
+      +tags: ["intermediate"]
+
+    marts:
+      +materialized: table
+      +tags: ["marts"]
+      core:
+        +schema: mart_core
+        +tags: ["marts", "core"]
+      finance:
+        +schema: mart_finance
+        +tags: ["marts", "finance"]
+      marketing:
+        +schema: mart_marketing
+        +tags: ["marts", "marketing"]
+
+snapshots:
+  ecommerce_analytics:
+    +target_schema: snapshots
+    +strategy: timestamp
+    +updated_at: updated_at
+
+seeds:
+  ecommerce_analytics:
+    +schema: staging
+    currency_rates:
+      +column_types:
+        rate: numeric(10,6)

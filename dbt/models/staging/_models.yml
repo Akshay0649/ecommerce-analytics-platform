@@ -1,0 +1,104 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: One row per customer, lightly cleaned.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: email
+        tests: [not_null]
+      - name: signup_date
+        tests: [not_null]
+
+  - name: stg_products
+    description: Product catalog with derived margin fields.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+      - name: sku
+        tests: [unique, not_null]
+      - name: unit_price
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: margin_pct
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: -1
+              max_value: 1
+
+  - name: stg_orders
+    description: Order header, normalized statuses + booleans.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+      - name: gross_amount
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: stg_order_items
+    description: Order lines with cost and margin.
+    columns:
+      - name: order_item_id
+        tests: [unique, not_null]
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+      - name: product_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+      - name: quantity
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+
+  - name: stg_payments
+    columns:
+      - name: payment_id
+        tests: [unique, not_null]
+      - name: order_id
+        tests:
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+
+  - name: stg_shipments
+    columns:
+      - name: shipment_id
+        tests: [unique, not_null]
+
+  - name: stg_web_sessions
+    columns:
+      - name: session_id
+        tests: [unique, not_null]
+
+  - name: stg_web_events
+    columns:
+      - name: event_id
+        tests: [unique, not_null]
+      - name: session_id
+        tests:
+          - relationships:
+              to: ref('stg_web_sessions')
+              field: session_id
+
+  - name: stg_categories
+    columns:
+      - name: category_id
+        tests: [unique, not_null]

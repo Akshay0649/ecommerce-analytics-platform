@@ -1,0 +1,153 @@
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('POSTGRES_DB', 'analytics') }}"
+    schema: raw
+    description: >
+      Raw landing zone for the e-commerce OLTP system. Tables are append-only
+      from upstream ingestion; do not transform here.
+    loaded_at_field: _ingested_at
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+
+    tables:
+      - name: customers
+        description: One row per registered customer.
+        columns:
+          - name: customer_id
+            description: Surrogate PK from upstream OLTP.
+            tests:
+              - unique
+              - not_null
+          - name: email
+            tests:
+              - not_null
+          - name: signup_ts
+            tests:
+              - not_null
+
+      - name: categories
+        description: Product category hierarchy (self-referencing).
+        columns:
+          - name: category_id
+            tests: [unique, not_null]
+          - name: category_name
+            tests: [not_null]
+
+      - name: products
+        description: Product catalog. SCD2 captured via snapshot.
+        columns:
+          - name: product_id
+            tests: [unique, not_null]
+          - name: sku
+            tests: [unique, not_null]
+          - name: unit_price
+            tests:
+              - not_null
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 0
+                  strictly: false
+          - name: unit_cost
+            tests:
+              - not_null
+
+      - name: orders
+        description: Header-level order facts.
+        columns:
+          - name: order_id
+            tests: [unique, not_null]
+          - name: customer_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'customers')
+                  field: customer_id
+          - name: order_ts
+            tests: [not_null]
+          - name: status
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'refunded']
+          - name: grand_total
+            tests:
+              - not_null
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 0
+
+      - name: order_items
+        description: Order lines, grain = 1 row per item per order.
+        columns:
+          - name: order_item_id
+            tests: [unique, not_null]
+          - name: order_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'orders')
+                  field: order_id
+          - name: product_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'products')
+                  field: product_id
+          - name: quantity
+            tests:
+              - not_null
+              - dbt_expectations.expect_column_values_to_be_between:
+                  min_value: 1
+
+      - name: payments
+        description: Payment attempts and captures.
+        columns:
+          - name: payment_id
+            tests: [unique, not_null]
+          - name: order_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'orders')
+                  field: order_id
+          - name: payment_status
+            tests:
+              - accepted_values:
+                  values: ['captured', 'failed', 'refunded']
+
+      - name: shipments
+        description: Carrier shipment records.
+        columns:
+          - name: shipment_id
+            tests: [unique, not_null]
+          - name: order_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'orders')
+                  field: order_id
+
+      - name: web_sessions
+        description: Web/mobile session start/end records.
+        columns:
+          - name: session_id
+            tests: [unique, not_null]
+          - name: started_at
+            tests: [not_null]
+
+      - name: web_events
+        description: Funnel/clickstream events.
+        columns:
+          - name: event_id
+            tests: [unique, not_null]
+          - name: session_id
+            tests:
+              - not_null
+              - relationships:
+                  to: source('raw', 'web_sessions')
+                  field: session_id
+          - name: event_name
+            tests:
+              - accepted_values:
+                  values: ['page_view', 'view_product', 'add_to_cart', 'checkout_start', 'purchase']
