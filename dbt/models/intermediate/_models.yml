@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_orders_enriched
+    description: Order header joined with item rollups, payment summary, shipment.
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+
+  - name: int_customer_first_order
+    description: First completed order date per customer (cohort anchor).
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: first_order_date
+        tests: [not_null]
+
+  - name: int_session_funnel
+    description: Per-session funnel-stage booleans.
+    columns:
+      - name: session_id
+        tests: [unique, not_null]

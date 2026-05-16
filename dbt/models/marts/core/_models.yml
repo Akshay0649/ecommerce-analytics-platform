@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: dim_dates
+    description: Standard date dimension, day grain.
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+
+  - name: dim_customers
+    description: |
+      Conformed customer dimension, latest state. SCD2 history is in
+      `snapshots.snap_customers`. Includes lifetime metrics and a coarse
+      customer_segment (active / at_risk / churned / never_purchased).
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: email
+        tests: [not_null]
+      - name: lifetime_revenue
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: customer_segment
+        tests:
+          - accepted_values:
+              values: ['active', 'at_risk', 'churned', 'never_purchased']
+
+  - name: dim_products
+    description: Conformed product dimension with lifetime sales rollup.
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+      - name: sku
+        tests: [unique, not_null]
+      - name: product_velocity
+        tests:
+          - accepted_values:
+              values: ['fast_mover', 'slow_mover', 'dead_inventory', 'never_sold']
+
+  - name: fct_orders
+    description: |
+      Canonical order fact (grain = 1 row per order). Revenue, margin,
+      shipping SLAs, customer order type (new vs repeat).
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+      - name: gross_revenue
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: customer_order_type
+        tests:
+          - accepted_values:
+              values: ['new', 'repeat']
+
+  - name: fct_order_items
+    description: Order-line fact (grain = 1 row per order × product).
+    columns:
+      - name: order_item_id
+        tests: [unique, not_null]
+      - name: order_id
+        tests:
+          - relationships:
+              to: ref('fct_orders')
+              field: order_id
+      - name: product_id
+        tests:
+          - relationships:
+              to: ref('dim_products')
+              field: product_id
