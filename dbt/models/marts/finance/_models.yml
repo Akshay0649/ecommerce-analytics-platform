@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: fct_revenue_daily
+    description: |
+      Daily revenue, AOV, margin, new vs repeat order split — grouped by sales
+      channel. Primary input to the executive revenue dashboard.
+    columns:
+      - name: order_date
+        tests: [not_null]
+      - name: gross_revenue
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+      - name: margin_pct
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: -1
+              max_value: 1
+
+  - name: fct_margin_by_category
+    description: Daily revenue and margin broken down by product parent category.
+    columns:
+      - name: order_date
+        tests: [not_null]
+      - name: parent_category_name
+        tests: [not_null]
+
+  - name: fct_payments_summary
+    description: Daily payment attempts, capture rate, refunds — by method.
+    columns:
+      - name: payment_date
+        tests: [not_null]
+      - name: capture_rate
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 1
