@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: fct_customer_cohorts
+    description: |
+      Cohort retention matrix: rows = signup month, columns = months since first
+      order. Active customers + revenue per cell.
+    columns:
+      - name: cohort_month
+        tests: [not_null]
+      - name: months_since_first_order
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: dim_customers_rfm
+    description: |
+      RFM scoring (1–5 quintiles) and segment label per customer with at least
+      one completed order. as_of_date is parameterized via dbt vars.
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: r_score
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+              max_value: 5
+      - name: rfm_segment
+        tests:
+          - accepted_values:
+              values: [
+                'Champions', 'Loyal', 'Recent', 'At Risk',
+                'Cannot Lose Them', 'Hibernating', 'Needs Attention'
+              ]
+
+  - name: fct_funnel_daily
+    description: Funnel rates by day × utm_source × device.
+    columns:
+      - name: session_date
+        tests: [not_null]
+      - name: sessions
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+
+  - name: fct_channel_attribution
+    description: Last-touch revenue attribution by utm_source / medium / campaign.
+    columns:
+      - name: order_date
+        tests: [not_null]
+      - name: attributed_revenue
+        tests:
+          - not_null
