@@ -1,0 +1,13 @@
+version: 2
+
+seeds:
+  - name: currency_rates
+    description: FX rates to USD per currency, snapshot at the start of each year.
+    columns:
+      - name: currency_code
+        tests: [not_null]
+      - name: rate
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
