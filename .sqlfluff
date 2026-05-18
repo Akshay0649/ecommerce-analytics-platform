@@ -1,0 +1,28 @@
+[sqlfluff]
+dialect = postgres
+templater = jinja
+exclude_rules = L016, L032, L034, L036, L044
+max_line_length = 120
+
+[sqlfluff:indentation]
+indented_joins = false
+indented_using_on = true
+template_blocks_indent = false
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.identifiers]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.types]
+capitalisation_policy = lower
+
+[sqlfluff:templater:jinja]
+load_macros_from_path = dbt/macros

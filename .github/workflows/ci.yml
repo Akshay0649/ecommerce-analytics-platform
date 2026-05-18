@@ -1,0 +1,92 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: analytics
+          POSTGRES_USER: analytics
+          POSTGRES_PASSWORD: analytics
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U analytics"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics
+      DBT_PROFILE_TARGET: ci
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+      SEED_NUM_CUSTOMERS: 200
+      SEED_NUM_PRODUCTS: 50
+      SEED_NUM_ORDERS: 800
+      SEED_NUM_SESSIONS: 2000
+      SEED_RANDOM_STATE: 7
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ingestion/requirements.txt
+          pip install -r airflow/requirements.txt
+          pip install ruff sqlfluff sqlfluff-templater-dbt pytest pre-commit
+
+      - name: Ruff
+        run: ruff check ingestion tests
+
+      - name: Apply Postgres bootstrap
+        run: |
+          for f in sql/init/*.sql; do
+            PGPASSWORD=$POSTGRES_PASSWORD psql \
+              -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB -f "$f"
+          done
+
+      - name: Seed raw layer
+        run: |
+          cd ingestion && python load_to_postgres.py
+
+      - name: Pytest
+        run: pytest -q
+
+      - name: dbt deps
+        run: cd dbt && dbt deps --target ci
+
+      - name: dbt build (compile + run + test)
+        run: cd dbt && dbt build --target ci
+
+      - name: SQLFluff
+        run: sqlfluff lint dbt/models --dialect postgres --templater jinja
+
+      - name: Upload dbt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-artifacts
+          path: |
+            dbt/target/manifest.json
+            dbt/target/run_results.json
+            dbt/target/catalog.json
+          if-no-files-found: ignore
