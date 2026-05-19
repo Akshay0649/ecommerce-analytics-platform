@@ -371,7 +371,7 @@ WHERE product_velocity = 'dead_inventory';
 **Requirements:** Docker Desktop, ~6 GB free RAM, ~3 GB disk.
 
 ```bash
-git clone https://github.com/Akshay-Ravirala/ecommerce-analytics-platform.git
+git clone https://github.com/Akshay0649/ecommerce-analytics-platform.git
 cd ecommerce-analytics-platform
 
 cp .env.example .env       # defaults work for local
@@ -498,7 +498,7 @@ Built by **Akshay Ravirala** as a portfolio piece demonstrating end-to-end
 data engineering — from infrastructure-as-code through ingestion,
 orchestration, modeling, testing, documentation, and CI/CD.
 
-- GitHub: [@Akshay-Ravirala](https://github.com/Akshay-Ravirala)
+- GitHub: [@Akshay0649](https://github.com/Akshay0649)
 - Email: raviralaakshaykumar@gmail.com
 
 ---
