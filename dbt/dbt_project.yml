@@ -58,8 +58,9 @@ models:
 snapshots:
   ecommerce_analytics:
     +target_schema: snapshots
-    +strategy: timestamp
-    +updated_at: updated_at
+    # NOTE: strategy + updated_at are set per-snapshot, not at project level.
+    # snap_products uses strategy=timestamp on updated_at; snap_customers uses
+    # strategy=check (no updated_at column required).
 
 seeds:
   ecommerce_analytics:
