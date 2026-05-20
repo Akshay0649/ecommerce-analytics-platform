@@ -13,11 +13,10 @@ import logging
 import os
 import sys
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 import psycopg2
 import psycopg2.extras
-
 from generate_data import generate
 
 logging.basicConfig(

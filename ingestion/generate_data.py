@@ -14,9 +14,9 @@ from __future__ import annotations
 import os
 import random
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Iterator
 
 from faker import Faker
 

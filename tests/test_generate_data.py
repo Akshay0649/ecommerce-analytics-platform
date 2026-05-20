@@ -20,9 +20,11 @@ os.environ.setdefault("SEED_NUM_ORDERS", "300")
 os.environ.setdefault("SEED_NUM_SESSIONS", "500")
 os.environ.setdefault("SEED_RANDOM_STATE", "1")
 
-# We need to re-import after env vars are set
-import importlib  # noqa: E402
-import generate_data  # noqa: E402
+# We import after env vars are set so the generator picks up the test-sized
+# values when its module-level constants are evaluated.
+import importlib
+
+import generate_data
 
 importlib.reload(generate_data)
 

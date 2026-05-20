@@ -7,6 +7,10 @@ extend-exclude = ["airflow/logs", "dbt/target", "dbt/dbt_packages"]
 select = ["E", "F", "W", "I", "B", "UP", "N", "PT", "SIM", "RUF"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Test file intentionally imports after setting env vars + sys.path
+"tests/test_generate_data.py" = ["E402"]
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
