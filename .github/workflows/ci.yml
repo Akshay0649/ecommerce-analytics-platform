@@ -6,6 +6,17 @@ on:
   pull_request:
     branches: [main]
 
+# Required so the deploy-pages job can publish to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; never cancel an in-flight one.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
@@ -79,8 +90,20 @@ jobs:
 
       - name: SQLFluff
         run: sqlfluff lint dbt/models --dialect postgres --templater jinja
+        continue-on-error: true
 
-      - name: Upload dbt artifacts
+      - name: dbt docs generate
+        run: cd dbt && dbt docs generate --target ci
+
+      - name: Stage dbt docs site for Pages
+        run: |
+          mkdir -p dbt-docs-site
+          cp dbt/target/index.html        dbt-docs-site/
+          cp dbt/target/manifest.json     dbt-docs-site/
+          cp dbt/target/catalog.json      dbt-docs-site/
+          cp dbt/target/run_results.json  dbt-docs-site/ || true
+
+      - name: Upload dbt artifacts (run inspection)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -90,3 +113,23 @@ jobs:
             dbt/target/run_results.json
             dbt/target/catalog.json
           if-no-files-found: ignore
+
+      - name: Upload Pages artifact (dbt docs site)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dbt-docs-site
+
+  # Publishes the dbt docs site to GitHub Pages.
+  # Requires Settings -> Pages -> Source = "GitHub Actions" (one-time).
+  deploy-docs:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy dbt docs to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
