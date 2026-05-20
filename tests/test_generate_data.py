@@ -13,12 +13,13 @@ from pathlib import Path
 # Make the ingestion module importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ingestion"))
 
-# Use small sizes so the test runs fast
-os.environ.setdefault("SEED_NUM_CUSTOMERS", "100")
-os.environ.setdefault("SEED_NUM_PRODUCTS", "30")
-os.environ.setdefault("SEED_NUM_ORDERS", "300")
-os.environ.setdefault("SEED_NUM_SESSIONS", "500")
-os.environ.setdefault("SEED_RANDOM_STATE", "1")
+# Use small sizes so the test runs fast. Force-overwrite (not setdefault)
+# so CI-level env vars meant for the warehouse build don't leak in here.
+os.environ["SEED_NUM_CUSTOMERS"] = "100"
+os.environ["SEED_NUM_PRODUCTS"] = "30"
+os.environ["SEED_NUM_ORDERS"] = "300"
+os.environ["SEED_NUM_SESSIONS"] = "500"
+os.environ["SEED_RANDOM_STATE"] = "1"
 
 # We import after env vars are set so the generator picks up the test-sized
 # values when its module-level constants are evaluated.
