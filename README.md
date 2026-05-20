@@ -6,6 +6,7 @@
 [![Postgres](https://img.shields.io/badge/Postgres-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![dbt docs](https://img.shields.io/badge/dbt%20docs-live-blue?logo=readthedocs&logoColor=white)](https://akshay0649.github.io/ecommerce-analytics-platform/)
 
 > A production-grade, end-to-end data engineering platform that turns raw
 > e-commerce OLTP records into a Kimball-style analytics layer powering
@@ -95,47 +96,56 @@ a configuration change in `.env`, not a rewrite.
 
 ## 3. Architecture
 
-```
-                       ┌────────────────────────────────────────────────────┐
-                       │                     Airflow                         │
-                       │           daily_elt DAG  (07:00 UTC)                │
-                       │                                                     │
-                       │  wait_for_warehouse → ingest_raw → dbt_deps →       │
-                       │  dbt_seed → dbt_run_staging → dbt_snapshot →        │
-                       │  dbt_run_intermediate → dbt_run_marts → dbt_test →  │
-                       │  dbt_docs_generate                                  │
-                       └──────────┬──────────────────────────┬───────────────┘
-                                  │                          │
-                  ┌───────────────▼──────────┐    ┌──────────▼───────────────┐
-                  │  Ingestion (Python)      │    │  dbt build                │
-                  │                          │    │                           │
-                  │  Faker → deterministic   │───▶│  staging  (views)         │
-                  │  source generator        │    │     ↓                     │
-                  │  ↓                       │    │  intermediate (ephemeral) │
-                  │  Bulk-load to raw.*      │    │     ↓                     │
-                  │  via execute_values()    │    │  marts.core / finance /   │
-                  └──────────┬───────────────┘    │  marketing (tables)       │
-                             │                    └──────────┬───────────────┘
-                             │                               │
-                             ▼                               ▼
-                  ┌──────────────────────────────────────────────────┐
-                  │             Postgres warehouse                    │
-                  │                                                   │
-                  │   raw.*            ← landing zone (OLTP mirror)   │
-                  │   staging.*        ← cast + rename                │
-                  │   intermediate.*   ← business logic CTEs          │
-                  │   mart_core.*      ← conformed dims + base facts  │
-                  │   mart_finance.*   ← revenue, margin, payments    │
-                  │   mart_marketing.* ← cohorts, RFM, funnel         │
-                  │   snapshots.*      ← SCD2 history                 │
-                  └──────────────┬───────────────────────────────────┘
-                                 │
-                            (read-only: bi_reader role)
-                                 │
-                          ┌──────▼───────┐
-                          │   Metabase   │
-                          │  dashboards  │
-                          └──────────────┘
+```mermaid
+flowchart TB
+    classDef src       fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef orch      fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef wh        fill:#e0e7ff,stroke:#4f46e5,color:#312e81
+    classDef mart      fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef bi        fill:#fce7f3,stroke:#db2777,color:#831843
+
+    subgraph SRC["📥 Source system (synthetic OLTP)"]
+        OLTP["Faker generator<br/>(deterministic)"]
+    end
+
+    subgraph ORCH["🪂 Airflow — daily_elt DAG (07:00 UTC)"]
+        DAG["wait_warehouse → ingest →<br/>dbt deps → seed → run → snapshot → test → docs"]
+    end
+
+    subgraph WH["🐘 Postgres warehouse"]
+        Raw["raw.*<br/>landing zone"]
+        Stg["staging.*<br/>(views — cast + rename)"]
+        Int["intermediate.*<br/>(ephemeral CTEs)"]
+        subgraph MARTS["Marts (tables)"]
+            Core["mart_core.*<br/>dim_customers, dim_products,<br/>fct_orders, fct_order_items"]
+            Fin["mart_finance.*<br/>fct_revenue_daily, margin,<br/>payments_summary"]
+            Mkt["mart_marketing.*<br/>cohorts, RFM, funnel,<br/>channel attribution"]
+        end
+        Snap["snapshots.*<br/>SCD2 history"]
+    end
+
+    subgraph BI["📊 BI layer"]
+        Meta["Metabase<br/>(read-only: bi_reader)"]
+    end
+
+    OLTP -- "Python loader<br/>execute_values()" --> Raw
+    DAG -.orchestrates.-> Raw
+    DAG -.orchestrates.-> Snap
+    Raw  -- "dbt staging"      --> Stg
+    Stg  -- "dbt intermediate" --> Int
+    Int  -- "dbt marts"        --> Core
+    Int  -- "dbt marts"        --> Fin
+    Int  -- "dbt marts"        --> Mkt
+    Raw  -- "dbt snapshot"     --> Snap
+    Core --> Meta
+    Fin  --> Meta
+    Mkt  --> Meta
+
+    class OLTP src
+    class DAG orch
+    class Raw,Stg,Int,Snap wh
+    class Core,Fin,Mkt mart
+    class Meta bi
 ```
 
 ### Layered modeling rationale
@@ -191,28 +201,45 @@ with realistic distributions:
 
 ### Conformed dimensions and facts
 
-```
-                    ┌──────────────────────┐
-                    │   mart_core          │
-                    │   ──────────         │
-                    │   dim_dates          │ (day grain, 2022-01-01 → 2026-12-31)
-                    │   dim_customers      │ (lifetime metrics + segment)
-                    │   dim_products       │ (category rollup + velocity)
-                    │   fct_orders         │ (1 row per order)
-                    │   fct_order_items    │ (1 row per order × product)
-                    └──────────────────────┘
-                                │
-                ┌───────────────┼────────────────────┐
-                │                                    │
-       ┌────────▼─────────────┐         ┌────────────▼──────────────┐
-       │   mart_finance       │         │   mart_marketing          │
-       │   ────────────       │         │   ────────────────        │
-       │   fct_revenue_daily  │         │   fct_customer_cohorts    │
-       │   fct_margin_by_     │         │   dim_customers_rfm       │
-       │     category         │         │   fct_funnel_daily        │
-       │   fct_payments_      │         │   fct_channel_attribution │
-       │     summary          │         └───────────────────────────┘
-       └──────────────────────┘
+```mermaid
+flowchart TB
+    classDef coreCls    fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef financeCls fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef mktCls     fill:#fce7f3,stroke:#db2777,color:#831843
+
+    subgraph CORE["mart_core (conformed)"]
+        dimDates["dim_dates<br/>day grain"]
+        dimCust["dim_customers<br/>lifetime + segment"]
+        dimProd["dim_products<br/>category + velocity"]
+        fctOrd["fct_orders<br/>1 row / order"]
+        fctItm["fct_order_items<br/>1 row / order × product"]
+    end
+
+    subgraph FIN["mart_finance"]
+        rev["fct_revenue_daily"]
+        mgn["fct_margin_by_category"]
+        pay["fct_payments_summary"]
+    end
+
+    subgraph MKT["mart_marketing"]
+        coh["fct_customer_cohorts"]
+        rfm["dim_customers_rfm"]
+        fnl["fct_funnel_daily"]
+        att["fct_channel_attribution"]
+    end
+
+    fctOrd --> rev
+    fctOrd --> mgn
+    fctItm --> mgn
+    fctOrd --> pay
+    fctOrd --> coh
+    dimCust --> rfm
+    fctOrd --> rfm
+    fctOrd --> att
+
+    class dimDates,dimCust,dimProd,fctOrd,fctItm coreCls
+    class rev,mgn,pay financeCls
+    class coh,rfm,fnl,att mktCls
 ```
 
 Every model is documented in `_models.yml` files with descriptions and tests
