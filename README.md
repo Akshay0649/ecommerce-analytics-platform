@@ -401,7 +401,7 @@ WHERE product_velocity = 'dead_inventory';
 git clone https://github.com/Akshay0649/ecommerce-analytics-platform.git
 cd ecommerce-analytics-platform
 
-cp .env.example .env       # defaults work for local
+make init-env              # generates .env with fresh Fernet + secret keys
 
 make up                    # ~5–8 min first time (image pulls)
 make seed                  # ~30s — generate + load synthetic source data

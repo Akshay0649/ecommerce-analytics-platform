@@ -1,9 +1,10 @@
-.PHONY: help up down restart logs ps build seed dbt-build dbt-run dbt-test dbt-docs trigger-dag airflow-init psql clean fmt lint test pre-commit
+.PHONY: help init-env up down restart logs ps build seed dbt-build dbt-run dbt-test dbt-docs trigger-dag airflow-init psql clean fmt lint test pre-commit
 
 SHELL := /bin/bash
 COMPOSE := docker compose --env-file .env
 
 help:
+	@echo "make init-env       - one-time: create .env from template w/ generated keys"
 	@echo "make up             - bring up all services (postgres, airflow, metabase)"
 	@echo "make down           - tear everything down (keeps volumes)"
 	@echo "make clean          - tear everything down AND wipe volumes"
@@ -16,8 +17,29 @@ help:
 	@echo "make psql           - psql shell into the warehouse"
 	@echo "make fmt / lint / test / pre-commit"
 
+# Bootstrap a local .env from .env.example, replacing placeholders with freshly
+# generated cryptographic values. Safe to re-run (will not overwrite existing .env).
+init-env:
+	@if [ -f .env ]; then \
+		echo ".env already exists — refusing to overwrite. Delete it first if you want a fresh one."; \
+		exit 1; \
+	fi
+	@command -v python >/dev/null 2>&1 || { echo "python is required"; exit 1; }
+	@python -m pip install --quiet cryptography 2>/dev/null || true
+	@FERNET=$$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"); \
+	 SECRET=$$(python -c "import secrets; print(secrets.token_urlsafe(32))"); \
+	 PGPW=$$(python  -c "import secrets; print(secrets.token_urlsafe(16))"); \
+	 ADMINPW=$$(python -c "import secrets; print(secrets.token_urlsafe(12))"); \
+	 sed -e "s|<REPLACE_ME_strong_random_password>|$$PGPW|" \
+	     -e "s|<REPLACE_ME_run_fernet_generate_key>|$$FERNET|" \
+	     -e "s|<REPLACE_ME_random_32_char_string>|$$SECRET|" \
+	     -e "s|<REPLACE_ME_strong_password>|$$ADMINPW|" \
+	     .env.example > .env
+	@echo "✓ Generated .env with fresh credentials."
+	@echo "  Airflow admin password: see AIRFLOW_ADMIN_PASSWORD in .env"
+
 up:
-	cp -n .env.example .env || true
+	@if [ ! -f .env ]; then echo ".env missing — run: make init-env"; exit 1; fi
 	$(COMPOSE) up -d postgres airflow-db
 	$(COMPOSE) up -d airflow-init
 	$(COMPOSE) up -d airflow-webserver airflow-scheduler metabase
